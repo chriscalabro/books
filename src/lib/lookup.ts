@@ -143,12 +143,13 @@ function slugParts(url: string): { query: string | null; author: string | null }
 
 // ---------- Jina Reader: title (+subtitle), author, date -------------------
 const AUTHOR_LINK =
-  /\[([^\]]+)\]\(([^)]*(?:our-authors|\/authors?\/|contributor|\/taxonomy\/term)[^)]*)\)/gi;
+  /\[([^\]]+)\]\(([^)]*(?:our-authors|\/authors?\/|contributor|\/taxonomy\/term|filter\[author\]=)[^)]*)\)/gi;
 
 function collectAuthors(text: string): string[] {
   const found: string[] = [];
   for (const m of text.matchAll(AUTHOR_LINK)) {
-    const name = m[1].trim();
+    // Trim trailing/leading punctuation — Wiley renders "[Matthew Zachary,](…)".
+    const name = m[1].trim().replace(/^[,;·|]+|[,;·|]+$/g, "").trim();
     if (looksLikePerson(name) && !found.includes(name)) found.push(name);
     if (found.length >= 3) break;
   }
