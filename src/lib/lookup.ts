@@ -232,7 +232,28 @@ async function scrapeJina(url: string, query: string | null, microTitle?: string
     }
   }
 
-  return { title, author: authors.join(", ") || undefined, pub_date };
+  // Fallback: some publishers (U of Calgary Press) print the date on its own
+  // line with no label. Take the first line that is *only* a date — but skip
+  // the "Published Time:" header Jina prepends (that's the crawl time).
+  if (!pub_date) {
+    const soloDate = new RegExp(`^${DATE_TOK}$`, "i");
+    for (const l of lines) {
+      const v = stripMd(l).trim();
+      if (/^Published Time:/i.test(l)) continue;
+      if (soloDate.test(v)) {
+        pub_date = parseDate(v);
+        if (pub_date) break;
+      }
+    }
+  }
+
+  // Cover fallback for when microlink and og:image both fail: an inline image
+  // whose alt text calls itself a cover (U of Calgary: "...book cover of...").
+  let cover_url: string | undefined;
+  const coverImg = md.match(/!\[[^\]]*cover[^\]]*\]\((https?:\/\/[^)\s]+)\)/i);
+  if (coverImg) cover_url = coverImg[1];
+
+  return { title, author: authors.join(", ") || undefined, pub_date, cover_url };
 }
 
 // ---------- microlink: cover (and cheap fallbacks) -------------------------
@@ -318,7 +339,7 @@ export async function fetchBookFromUrl(pageUrl: string): Promise<BookMeta> {
     if (!meta.title) meta.title = j.title || cleanTitle(ml.title);
     if (!meta.author) meta.author = j.author || ml.author || slugAuthor || undefined;
     if (!meta.pub_date) meta.pub_date = j.pub_date || ml.pub_date;
-    if (!meta.cover_url) meta.cover_url = ml.cover_url;
+    if (!meta.cover_url) meta.cover_url = ml.cover_url || j.cover_url;
 
     // Cover still missing (microlink blocked) -> read the page's og:image.
     if (!meta.cover_url) {
