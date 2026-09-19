@@ -54,7 +54,7 @@ function titleMatchesSlug(title: string, query: string | null): boolean {
 const stripMd = (s: string) =>
   s
     .replace(/^#+\s*/, "")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // [text](url)->text; []( url)->"" (logo links)
     .replace(/[*_`]/g, "")
     .trim();
 
@@ -252,7 +252,7 @@ async function scrapeJina(url: string, query: string | null, microTitle?: string
   // whose alt text calls itself a cover (U of Calgary: "...book cover of...").
   let cover_url: string | undefined;
   const coverImg = md.match(/!\[[^\]]*cover[^\]]*\]\((https?:\/\/[^)\s]+)\)/i);
-  if (coverImg) cover_url = coverImg[1];
+  if (coverImg) cover_url = coverImg[1].replace(/^http:/i, "https:");
 
   return { title, author: authors.join(", ") || undefined, pub_date, cover_url };
 }
@@ -287,7 +287,9 @@ async function scrapeOgImage(url: string): Promise<string | undefined> {
     html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
     html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
   const src = m?.[1]?.trim();
-  return src && /^https?:\/\//i.test(src) ? src : undefined;
+  // Force https: some publishers (HarperCollins) advertise an http:// og:image,
+  // which a browser blocks as mixed content on our https-hosted app.
+  return src && /^https?:\/\//i.test(src) ? src.replace(/^http:/i, "https:") : undefined;
 }
 
 // ---------- Goodreads: publication-date cross-check ------------------------
