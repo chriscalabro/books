@@ -20,7 +20,7 @@ import {
 import { useUpsertBook, type Book } from "@/hooks/useBooks";
 import { useLists } from "@/hooks/useLists";
 import { fetchBookFromUrl } from "@/lib/lookup";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const NONE = "__none__";
@@ -29,9 +29,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   book?: Book | null;
+  /** Ask the parent to delete this book (parent shows the confirm dialog). */
+  onRequestDelete?: (book: Book) => void;
 }
 
-export default function BookForm({ open, onOpenChange, book }: Props) {
+export default function BookForm({ open, onOpenChange, book, onRequestDelete }: Props) {
   const upsert = useUpsertBook();
   const categories = useLists("category");
   const acquisitions = useLists("acquisition");
@@ -118,6 +120,13 @@ export default function BookForm({ open, onOpenChange, book }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-h-[90vh] overflow-y-auto sm:max-w-md"
+        onKeyDown={(e) => {
+          // Cmd/Ctrl+Enter saves from anywhere in the form.
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            if (!upsert.isPending) save();
+          }
+        }}
         onOpenAutoFocus={(e) => {
           // For a new book, land in the URL bar so paste + Enter fetches.
           if (!book) {
@@ -198,9 +207,6 @@ export default function BookForm({ open, onOpenChange, book }: Props) {
           <div>
             <Label htmlFor="pub_date">Published</Label>
             <Input id="pub_date" type="date" value={form.pub_date} onChange={(e) => set("pub_date", e.target.value)} />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Often only month/year is known — just pick the 1st. Display format is set in Settings.
-            </p>
           </div>
           <div>
             <Label htmlFor="cover_url">Cover image URL</Label>
@@ -226,11 +232,27 @@ export default function BookForm({ open, onOpenChange, book }: Props) {
             <Textarea id="notes" rows={3} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={upsert.isPending}>
-            {upsert.isPending ? "Saving…" : "Save"}
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {book && onRequestDelete ? (
+            <Button
+              variant="ghost"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => {
+                onOpenChange(false);
+                onRequestDelete(book);
+              }}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" /> Delete
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={save} disabled={upsert.isPending} title="⌘↵ / Ctrl+↵">
+              {upsert.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

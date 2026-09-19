@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import BookCard from "@/components/BookCard";
 import BookForm from "@/components/BookForm";
@@ -17,6 +17,9 @@ import {
 import { useBooks, useDeleteBook, useTogglePin, type Book } from "@/hooks/useBooks";
 import { useLists } from "@/hooks/useLists";
 import { useOnline } from "@/hooks/useOnline";
+import { useGridCols } from "@/hooks/useGridCols";
+import { useSort } from "@/hooks/useSort";
+import { sortBooks } from "@/lib/sortBooks";
 import { cn } from "@/lib/utils";
 import { Plus, LayoutGrid, List as ListIcon, Search, WifiOff, Filter, Pin } from "lucide-react";
 import { toast } from "sonner";
@@ -30,9 +33,10 @@ export default function Books() {
   const del = useDeleteBook();
   const pin = useTogglePin();
   const online = useOnline();
+  const sort = useSort();
 
   const [view, setView] = useState<"list" | "grid">(
-    (localStorage.getItem("books-view") as "list" | "grid") || "list"
+    (localStorage.getItem("books-view") as "list" | "grid") || "grid"
   );
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<string | null>(null);
@@ -62,6 +66,9 @@ export default function Books() {
     });
   }, [books, search, catFilter, acqFilter]);
 
+  // The user's chosen order for the main (category-grouped) list.
+  const sorted = useMemo(() => sortBooks(filtered, sort), [filtered, sort]);
+
   // Date-based views. (yyyy-MM-dd sorts lexicographically.)
   const today = new Date().toISOString().slice(0, 10);
   // Not-yet-published, soonest first.
@@ -85,13 +92,13 @@ export default function Books() {
   const timedLabel = timeFilter === "future" ? "Upcoming" : "Published";
 
   // Pinned books float to the top in their own section, out of the category groups.
-  const pinnedBooks = useMemo(() => filtered.filter((b) => b.pinned), [filtered]);
+  const pinnedBooks = useMemo(() => sorted.filter((b) => b.pinned), [sorted]);
 
   // Group the rest by category, ordered by the user's category order.
   const groups = useMemo(() => {
     const order = [...(categories.data?.map((c) => c.name) ?? []), UNCATEGORIZED];
     const map = new Map<string, Book[]>();
-    for (const b of filtered) {
+    for (const b of sorted) {
       if (b.pinned) continue;
       const key = b.category ?? UNCATEGORIZED;
       if (!map.has(key)) map.set(key, []);
@@ -100,7 +107,7 @@ export default function Books() {
     return order
       .filter((name) => map.has(name))
       .map((name) => ({ name, items: map.get(name)! }));
-  }, [filtered, categories.data]);
+  }, [sorted, categories.data]);
 
   const openAdd = () => {
     setEditing(null);
@@ -175,18 +182,18 @@ export default function Books() {
           </Button>
           <div className="flex overflow-hidden rounded-md border">
             <button
-              className={cn("px-2.5 py-2", view === "list" && "bg-muted")}
-              onClick={() => setViewPersist("list")}
-              aria-label="List view"
-            >
-              <ListIcon className="h-4 w-4" />
-            </button>
-            <button
               className={cn("px-2.5 py-2", view === "grid" && "bg-muted")}
               onClick={() => setViewPersist("grid")}
               aria-label="Grid view"
             >
               <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              className={cn("px-2.5 py-2", view === "list" && "bg-muted")}
+              onClick={() => setViewPersist("list")}
+              aria-label="List view"
+            >
+              <ListIcon className="h-4 w-4" />
             </button>
           </div>
           <Button onClick={openAdd} className="gap-1">
@@ -282,7 +289,7 @@ export default function Books() {
         )}
       </main>
 
-      <BookForm open={formOpen} onOpenChange={setFormOpen} book={editing} />
+      <BookForm open={formOpen} onOpenChange={setFormOpen} book={editing} onRequestDelete={setDeleting} />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>
@@ -317,9 +324,15 @@ function BookGroup({
   onTogglePin: (b: Book) => void;
   showDate?: boolean;
 }) {
+  const gridCols = useGridCols();
   if (view === "grid") {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      <div
+        // Small screens use fixed columns; on desktop (lg+) the count is the
+        // user's Settings choice, applied via a CSS var.
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:[grid-template-columns:repeat(var(--book-cols),minmax(0,1fr))]"
+        style={{ "--book-cols": gridCols } as React.CSSProperties}
+      >
         {books.map((b) => (
           <BookCard key={b.id} book={b} view="grid" onEdit={onEdit} onDelete={onDelete} onTogglePin={onTogglePin} showDate={showDate} />
         ))}

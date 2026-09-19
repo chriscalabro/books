@@ -10,9 +10,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { useLists, type ListKind } from "@/hooks/useLists";
 import { DATE_FORMATS, setDateFormat } from "@/lib/dateFormat";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import {
+  MIN_GRID_COLS,
+  MAX_GRID_COLS,
+  setGridCols,
+} from "@/lib/gridCols";
+import { useGridCols } from "@/hooks/useGridCols";
+import { SORT_OPTIONS, setSort } from "@/lib/sortBooks";
+import { useSort } from "@/hooks/useSort";
 import { Check, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,19 +31,76 @@ export default function Settings() {
       <AppHeader />
       <main className="container max-w-lg space-y-6 px-4 py-6">
         <h1 className="text-lg font-semibold">Settings</h1>
+        <SortSetting />
+        <GridColsSetting />
         <DateFormatSetting />
         <ListManager
           kind="category"
           title="Categories"
+          singular="category"
           hint="Renaming re-tags matching books. Deleting clears the tag but keeps the books."
         />
         <ListManager
           kind="acquisition"
           title="Acquisition methods"
+          singular="acquisition method"
           hint="e.g. Libby, MVLC, Buy — whatever you use. Starts empty."
         />
       </main>
     </div>
+  );
+}
+
+function SortSetting() {
+  const current = useSort();
+  return (
+    <Card className="p-4">
+      <h2 className="font-medium">Sort order</h2>
+      <p className="mb-3 text-xs text-muted-foreground">
+        How your books are ordered within each category. The Upcoming and
+        Published views always sort by publish date.
+      </p>
+      <Select value={current} onValueChange={(v) => setSort(v as any)}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SORT_OPTIONS.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Card>
+  );
+}
+
+function GridColsSetting() {
+  const cols = useGridCols();
+  return (
+    <Card className="p-4">
+      <div className="mb-1 flex items-baseline justify-between">
+        <h2 className="font-medium">Books per row</h2>
+        <span className="text-sm tabular-nums text-muted-foreground">{cols}</span>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        How many cards fit in a row on desktop, in grid view. Phones and tablets
+        adjust automatically.
+      </p>
+      <Slider
+        min={MIN_GRID_COLS}
+        max={MAX_GRID_COLS}
+        step={1}
+        value={[cols]}
+        onValueChange={(v) => setGridCols(v[0])}
+        aria-label="Books per row"
+      />
+      <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
+        <span>Bigger</span>
+        <span>Smaller</span>
+      </div>
+    </Card>
   );
 }
 
@@ -65,10 +131,12 @@ function DateFormatSetting() {
 function ListManager({
   kind,
   title,
+  singular,
   hint,
 }: {
   kind: ListKind;
   title: string;
+  singular: string;
   hint: string;
 }) {
   const { data = [], add, rename, remove } = useLists(kind);
@@ -151,7 +219,7 @@ function ListManager({
 
       <div className="mt-3 flex gap-2">
         <Input
-          placeholder={`Add ${title.toLowerCase().replace(/s$/, "")}`}
+          placeholder={`Add ${singular}`}
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && doAdd()}
