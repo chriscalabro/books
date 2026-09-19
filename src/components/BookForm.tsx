@@ -85,6 +85,14 @@ export default function BookForm({ open, onOpenChange, book, onRequestDelete }: 
         link: f.link || meta.link,
       }));
       toast.success("Autofilled — review and save");
+
+      // Goodreads cross-check: warn when its date disagrees with what we filled.
+      const filled = form.pub_date || meta.pub_date;
+      if (meta.goodreads_date && filled && meta.goodreads_date !== filled) {
+        toast.warning(`Goodreads shows ${meta.goodreads_date} — publisher page says ${filled}`, {
+          duration: 8000,
+        });
+      }
     } catch (e: any) {
       toast.error(e.message ?? "Lookup failed");
     } finally {

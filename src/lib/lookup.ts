@@ -16,6 +16,7 @@ export interface BookMeta {
   author?: string;
   cover_url?: string;
   pub_date?: string; // yyyy-MM-dd
+  goodreads_date?: string; // yyyy-MM-dd — cross-check date from Goodreads, if found
   link: string;
 }
 
@@ -289,6 +290,33 @@ async function scrapeOgImage(url: string): Promise<string | undefined> {
   return src && /^https?:\/\//i.test(src) ? src : undefined;
 }
 
+// ---------- Goodreads: publication-date cross-check ------------------------
+// Goodreads has reliable dates, labeled "Published", "First published", or
+// "Expected publication". Note "First published" is the ORIGINAL work date, so
+// it can differ from a specific edition's release date — we surface it as a
+// cross-check, not a source of truth. Needs an ISBN (via /book/isbn/<isbn>).
+const GOODREADS_LABELS = ["Expected publication", "First published", "Published"];
+
+async function goodreadsDate(isbn: string): Promise<string | undefined> {
+  const res = await fetch(`https://r.jina.ai/https://www.goodreads.com/book/isbn/${isbn}`, {
+    headers: { "X-Return-Format": "markdown" },
+  });
+  if (!res.ok) throw new Error(`Goodreads ${res.status}`);
+  const md = await res.text();
+  const dateRe = new RegExp(DATE_TOK, "i");
+  for (const label of GOODREADS_LABELS) {
+    for (const lm of md.matchAll(new RegExp(label, "gi"))) {
+      const from = lm.index + lm[0].length;
+      const dm = md.slice(from, from + 40).match(dateRe);
+      if (dm) {
+        const d = parseDate(dm[0]);
+        if (d) return d;
+      }
+    }
+  }
+  return undefined;
+}
+
 // ---------- Google Books: authoritative / gap-filler -----------------------
 async function googleBooks(query: string): Promise<Partial<BookMeta>> {
   const res = await fetch(
@@ -365,5 +393,13 @@ export async function fetchBookFromUrl(pageUrl: string): Promise<BookMeta> {
   if (!meta.title || isJunkTitle(meta.title)) {
     throw new Error("Couldn't find the book on that page — try a different link");
   }
+
+  // 4. Cross-check the date against Goodreads (ISBN only). Fill it if we still
+  // have none; otherwise expose it so the UI can flag a disagreement.
+  if (isbn) {
+    meta.goodreads_date = await goodreadsDate(isbn).catch(() => undefined);
+    if (!meta.pub_date) meta.pub_date = meta.goodreads_date;
+  }
+
   return meta;
 }
