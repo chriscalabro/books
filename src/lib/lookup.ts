@@ -15,8 +15,9 @@ export interface BookMeta {
   title?: string;
   author?: string;
   cover_url?: string;
-  pub_date?: string; // yyyy-MM-dd
-  goodreads_date?: string; // yyyy-MM-dd — cross-check date from Goodreads, if found
+  pub_date?: string; // yyyy-MM-dd (primary; Goodreads preferred)
+  alt_pub_date?: string; // a differing date from the other source, for a UI warning
+  alt_pub_source?: string; // where alt_pub_date came from, e.g. "Publisher page"
   link: string;
 }
 
@@ -118,6 +119,15 @@ function extractIsbn(url: string): string | null {
   if (m10) return m10[1];
   return null;
 }
+
+// First ISBN-13 anywhere in a blob of page text (used to bridge a publisher
+// page with no ISBN in its URL over to Goodreads).
+function isbnFromText(text: string): string | null {
+  const m = text.replace(/[-\s]/g, "").match(/(97[89]\d{10})/);
+  return m ? m[1] : null;
+}
+
+const isGoodreadsUrl = (url: string) => /(^|\.)goodreads\.com/i.test(url);
 
 function slugParts(url: string): { query: string | null; author: string | null } {
   try {
@@ -255,7 +265,7 @@ async function scrapeJina(url: string, query: string | null, microTitle?: string
   const coverImg = md.match(/!\[[^\]]*cover[^\]]*\]\((https?:\/\/[^)\s]+)\)/i);
   if (coverImg) cover_url = coverImg[1].replace(/^http:/i, "https:");
 
-  return { title, author: authors.join(", ") || undefined, pub_date, cover_url };
+  return { title, author: authors.join(", ") || undefined, pub_date, cover_url, isbn: isbnFromText(md) };
 }
 
 // ---------- microlink: cover (and cheap fallbacks) -------------------------
@@ -293,31 +303,61 @@ async function scrapeOgImage(url: string): Promise<string | undefined> {
   return src && /^https?:\/\//i.test(src) ? src.replace(/^http:/i, "https:") : undefined;
 }
 
-// ---------- Goodreads: publication-date cross-check ------------------------
-// Goodreads has reliable dates, labeled "Published", "First published", or
-// "Expected publication". Note "First published" is the ORIGINAL work date, so
-// it can differ from a specific edition's release date — we surface it as a
-// cross-check, not a source of truth. Needs an ISBN (via /book/isbn/<isbn>).
+// ---------- Goodreads: primary metadata source -----------------------------
+// Goodreads pages have a uniform structure, so one parser gets title, author,
+// date, and cover reliably — no per-publisher heuristics. Dates are labeled
+// "Published", "First published", or "Expected publication" ("First published"
+// is the ORIGINAL work date, which can differ from a specific edition).
 const GOODREADS_LABELS = ["Expected publication", "First published", "Published"];
+const GR_AUTHOR = /\[([^\]]+)\]\(https:\/\/www\.goodreads\.com\/author\/show\/[^)]+\)/gi;
+const GR_COVER =
+  /https:\/\/[a-z0-9.]*media-amazon\.com\/images\/S\/[^)"\s]*books\/[^)"\s]+\.(?:jpe?g|png)/i;
 
-async function goodreadsDate(isbn: string): Promise<string | undefined> {
-  const res = await fetch(`https://r.jina.ai/https://www.goodreads.com/book/isbn/${isbn}`, {
+// Accepts a full Goodreads book URL or a /book/isbn/<isbn> URL.
+async function scrapeGoodreads(url: string): Promise<Partial<BookMeta>> {
+  const res = await fetch(`https://r.jina.ai/${url}`, {
     headers: { "X-Return-Format": "markdown" },
   });
   if (!res.ok) throw new Error(`Goodreads ${res.status}`);
   const md = await res.text();
+  const lines = md.split("\n");
+
+  // Title: the first real H1 (Goodreads puts the full title, subtitle included).
+  let title: string | undefined;
+  for (const l of lines) {
+    if (!/^#\s+\S/.test(l)) continue;
+    const t = cleanTitle(stripMd(l));
+    if (t && !isJunkTitle(t)) {
+      title = t;
+      break;
+    }
+  }
+
+  // Authors: /author/show/ links, de-duped, people only, editors excluded.
+  const authors: string[] = [];
+  for (const m of md.matchAll(GR_AUTHOR)) {
+    const name = m[1].trim().replace(/^[,;·|]+|[,;·|]+$/g, "").trim();
+    if (looksLikePerson(name) && !authors.includes(name)) authors.push(name);
+    if (authors.length >= 3) break;
+  }
+
+  // Date.
+  let pub_date: string | undefined;
   const dateRe = new RegExp(DATE_TOK, "i");
-  for (const label of GOODREADS_LABELS) {
+  outer: for (const label of GOODREADS_LABELS) {
     for (const lm of md.matchAll(new RegExp(label, "gi"))) {
       const from = lm.index + lm[0].length;
       const dm = md.slice(from, from + 40).match(dateRe);
       if (dm) {
-        const d = parseDate(dm[0]);
-        if (d) return d;
+        pub_date = parseDate(dm[0]);
+        if (pub_date) break outer;
       }
     }
   }
-  return undefined;
+
+  const cover_url = md.match(GR_COVER)?.[0];
+
+  return { title, author: authors.join(", ") || undefined, pub_date, cover_url };
 }
 
 // ---------- Google Books: authoritative / gap-filler -----------------------
@@ -343,66 +383,84 @@ export async function fetchBookFromUrl(pageUrl: string): Promise<BookMeta> {
   const link = pageUrl.trim();
   if (!link) throw new Error("Enter a URL first");
 
-  const isbn = extractIsbn(link);
+  // A) Goodreads URL — parse it directly; it's our most reliable source.
+  if (isGoodreadsUrl(link)) {
+    const g = await scrapeGoodreads(link).catch(() => ({} as Partial<BookMeta>));
+    const meta: BookMeta = {
+      link,
+      title: g.title,
+      author: g.author,
+      pub_date: g.pub_date,
+      cover_url: g.cover_url,
+    };
+    if (!meta.title || isJunkTitle(meta.title)) {
+      throw new Error("Couldn't read that Goodreads page — try a different link");
+    }
+    return meta;
+  }
+
+  // B) Publisher URL. Goodreads is primary, but we reach it by ISBN and fall
+  //    back to the publisher page for the ISBN and for anything Goodreads lacks.
   const { query, author: slugAuthor } = slugParts(link);
-  const meta: BookMeta = { link };
 
-  // 1. Authoritative lookup for indexed (usually backlist) books.
-  if (isbn) {
-    try {
-      const g = await googleBooks(`isbn:${isbn}`);
-      Object.assign(meta, {
-        title: g.title,
-        author: g.author,
-        cover_url: g.cover_url,
-        pub_date: g.pub_date,
-      });
-    } catch {
-      /* forthcoming/unavailable — scrape next */
-    }
+  // Publisher-side sources (also yields an ISBN when the URL has none).
+  const ml = await scrapeMicrolink(link).catch(() => ({} as Partial<BookMeta>));
+  const j = await scrapeJina(link, query, ml.title).catch(
+    () => ({} as Awaited<ReturnType<typeof scrapeJina>>)
+  );
+  const pub = {
+    title: j.title || cleanTitle(ml.title) || undefined,
+    author: j.author || ml.author || slugAuthor || undefined,
+    pub_date: j.pub_date || ml.pub_date,
+    cover_url: ml.cover_url || j.cover_url,
+  };
+
+  const isbn = extractIsbn(link) || j.isbn || null;
+
+  // Google Books (authoritative for backlist), as another fallback source.
+  const gb = isbn
+    ? await googleBooks(`isbn:${isbn}`).catch(() => ({} as Partial<BookMeta>))
+    : ({} as Partial<BookMeta>);
+
+  // Goodreads primary, via ISBN.
+  const gr = isbn
+    ? await scrapeGoodreads(`https://www.goodreads.com/book/isbn/${isbn}`).catch(
+        () => ({} as Partial<BookMeta>)
+      )
+    : ({} as Partial<BookMeta>);
+
+  // Merge: Goodreads -> publisher page -> Google Books.
+  const meta: BookMeta = {
+    link,
+    title: gr.title || pub.title || gb.title,
+    author: gr.author || pub.author || gb.author,
+    pub_date: gr.pub_date || pub.pub_date || gb.pub_date,
+    cover_url: gr.cover_url || pub.cover_url || gb.cover_url,
+  };
+
+  // Date disagreement between Goodreads and the publisher page -> warn in the UI
+  // (e.g. Goodreads "first published" original vs. this edition's release).
+  if (gr.pub_date && pub.pub_date && gr.pub_date !== pub.pub_date) {
+    meta.alt_pub_date = pub.pub_date;
+    meta.alt_pub_source = "Publisher page";
   }
 
-  // 2. Scrape (fills whatever Google didn't — the common forthcoming case).
-  if (!meta.title || !meta.author || !meta.pub_date || !meta.cover_url) {
-    const ml = await scrapeMicrolink(link).catch(() => ({} as Partial<BookMeta>));
-    const j = await scrapeJina(link, query, ml.title).catch(() => ({} as Partial<BookMeta>));
+  // Cover still missing -> the publisher page's own og:image.
+  if (!meta.cover_url) meta.cover_url = await scrapeOgImage(link).catch(() => undefined);
 
-    if (!meta.title) meta.title = j.title || cleanTitle(ml.title);
-    if (!meta.author) meta.author = j.author || ml.author || slugAuthor || undefined;
-    if (!meta.pub_date) meta.pub_date = j.pub_date || ml.pub_date;
-    if (!meta.cover_url) meta.cover_url = ml.cover_url || j.cover_url;
-
-    // Cover still missing (microlink blocked) -> read the page's og:image.
-    if (!meta.cover_url) {
-      meta.cover_url = await scrapeOgImage(link).catch(() => undefined);
-    }
-  }
-
-  // 3. Rescue: title junk/missing -> Google Books by slug.
+  // Title still junk/missing -> Google Books by slug.
   if ((!meta.title || isJunkTitle(meta.title)) && query) {
-    try {
-      const g = await googleBooks(query);
-      if (g.title) {
-        meta.title = g.title;
-        meta.author ||= g.author;
-        meta.pub_date ||= g.pub_date;
-        meta.cover_url ||= g.cover_url;
-      }
-    } catch {
-      /* ignore */
+    const g = await googleBooks(query).catch(() => ({} as Partial<BookMeta>));
+    if (g.title) {
+      meta.title = g.title;
+      meta.author ||= g.author;
+      meta.pub_date ||= g.pub_date;
+      meta.cover_url ||= g.cover_url;
     }
   }
 
   if (!meta.title || isJunkTitle(meta.title)) {
     throw new Error("Couldn't find the book on that page — try a different link");
   }
-
-  // 4. Cross-check the date against Goodreads (ISBN only). Fill it if we still
-  // have none; otherwise expose it so the UI can flag a disagreement.
-  if (isbn) {
-    meta.goodreads_date = await goodreadsDate(isbn).catch(() => undefined);
-    if (!meta.pub_date) meta.pub_date = meta.goodreads_date;
-  }
-
   return meta;
 }
