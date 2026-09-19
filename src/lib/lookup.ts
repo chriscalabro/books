@@ -37,7 +37,7 @@ function looksLikePerson(name: string): boolean {
   if (n.length < 3 || n.length > 60) return false;
   if (/[<>|!\[\]{}@]|image|http/i.test(n)) return false;
   if (/\bauthors?\b/i.test(n)) return false;
-  if (/\b(learn more|our|explore|about this|more about|home|books?|contributor|editor)\b/i.test(n))
+  if (/\b(learn more|read more|our|explore|about this|more about|home|books?|contributor|editor)\b/i.test(n))
     return false;
   return /^[A-Za-z][A-Za-z.'-]*(\s+[A-Za-z][A-Za-z.'-]*){0,4}$/.test(n);
 }
@@ -143,7 +143,7 @@ function slugParts(url: string): { query: string | null; author: string | null }
 
 // ---------- Jina Reader: title (+subtitle), author, date -------------------
 const AUTHOR_LINK =
-  /\[([^\]]+)\]\(([^)]*(?:our-authors|\/authors?\/|contributor|\/taxonomy\/term|filter\[author\]=)[^)]*)\)/gi;
+  /\[([^\]]+)\]\(([^)]*(?:our-authors|\/authors?\/|\/author\/show\/|contributor|\/taxonomy\/term|filter\[author\]=|#book__authors)[^)]*)\)/gi;
 
 function collectAuthors(text: string): string[] {
   const found: string[] = [];
