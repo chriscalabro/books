@@ -77,9 +77,10 @@ function goodSubtitle(s: string, base: string): boolean {
 // ---------- date parsing ----------------------------------------------------
 const MON =
   "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
+const ORD = "(?:st|nd|rd|th)?"; // ordinal suffix, e.g. "11th" (UMN Press)
 const DATE_TOK =
-  `(?:(?:${MON})\\.?\\s+\\d{1,2},?\\s+\\d{4}` +
-  `|\\d{1,2}\\s+(?:${MON})\\.?\\s+\\d{4}` +
+  `(?:(?:${MON})\\.?\\s+\\d{1,2}${ORD},?\\s+\\d{4}` +
+  `|\\d{1,2}${ORD}\\s+(?:${MON})\\.?\\s+\\d{4}` +
   `|(?:${MON})\\.?\\s+\\d{4}` +
   `|\\d{4}-\\d{2}-\\d{2}` +
   `|\\d{1,2}/\\d{1,2}/\\d{4})`; // numeric M/D/YYYY (e.g. Harvard UP "10/06/2026")
@@ -90,6 +91,7 @@ const DATE_LABELS = [
   "On sale(?:\\s*date)?",
   "Release date",
   "Published",
+  "Publisher", // Simon & Schuster: "Publisher: Simon Six (May 12, 2026)"
   "Copyright",
 ];
 
@@ -216,14 +218,17 @@ async function scrapeJina(url: string, query: string | null, microTitle?: string
   // them (e.g. "**Publication date:** October 8, 2026").
   let pub_date: string | undefined;
   const dateRe = new RegExp(DATE_TOK, "i");
-  for (const label of DATE_LABELS) {
-    const lm = new RegExp(label, "i").exec(md);
-    if (!lm) continue;
-    const window = md.slice(lm.index + lm[0].length, lm.index + lm[0].length + 40);
-    const dm = window.match(dateRe);
-    if (dm) {
-      pub_date = parseDate(dm[0]);
-      if (pub_date) break;
+  outer: for (const label of DATE_LABELS) {
+    // Scan every occurrence: generic labels like "Published" also match noise
+    // such as "How Can I Get Published?" (Penguin RandomHouse), which appears
+    // before the real publication line and has no date after it.
+    for (const lm of md.matchAll(new RegExp(label, "gi"))) {
+      const from = lm.index + lm[0].length;
+      const dm = md.slice(from, from + 40).match(dateRe);
+      if (dm) {
+        pub_date = parseDate(dm[0]);
+        if (pub_date) break outer;
+      }
     }
   }
 
@@ -244,6 +249,23 @@ async function scrapeMicrolink(url: string): Promise<Partial<BookMeta>> {
     cover_url: d.image?.url || undefined,
     pub_date: parseDate(d.date),
   };
+}
+
+// ---------- og:image fallback ----------------------------------------------
+// microlink is our usual cover source, but it fails outright on bot-walled
+// sites (Penguin RandomHouse). The page's own og:image tag is still there, so
+// fetch the HTML through Jina (which adds CORS headers) and read it directly.
+async function scrapeOgImage(url: string): Promise<string | undefined> {
+  const res = await fetch(`https://r.jina.ai/${url}`, {
+    headers: { "X-Return-Format": "html" },
+  });
+  if (!res.ok) throw new Error(`Reader ${res.status}`);
+  const html = await res.text();
+  const m =
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+    html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+  const src = m?.[1]?.trim();
+  return src && /^https?:\/\//i.test(src) ? src : undefined;
 }
 
 // ---------- Google Books: authoritative / gap-filler -----------------------
@@ -297,6 +319,11 @@ export async function fetchBookFromUrl(pageUrl: string): Promise<BookMeta> {
     if (!meta.author) meta.author = j.author || ml.author || slugAuthor || undefined;
     if (!meta.pub_date) meta.pub_date = j.pub_date || ml.pub_date;
     if (!meta.cover_url) meta.cover_url = ml.cover_url;
+
+    // Cover still missing (microlink blocked) -> read the page's og:image.
+    if (!meta.cover_url) {
+      meta.cover_url = await scrapeOgImage(link).catch(() => undefined);
+    }
   }
 
   // 3. Rescue: title junk/missing -> Google Books by slug.
