@@ -248,8 +248,8 @@ export default function Books() {
             </p>
           ) : (
             <section>
-              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-                {timedLabel} <span className="font-normal">({timedList.length})</span>
+              <h2 className="mb-3 flex items-baseline gap-2 border-b pb-1.5 text-lg font-semibold text-foreground">
+                {timedLabel} <span className="text-sm font-normal text-muted-foreground">({timedList.length})</span>
               </h2>
               <BookGroup books={timedList} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} showDate />
             </section>
@@ -266,21 +266,21 @@ export default function Books() {
             )}
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {pinnedBooks.length > 0 && (
               <section>
-                <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                  <Pin className="h-3.5 w-3.5 fill-primary text-primary" /> Pinned{" "}
-                  <span className="font-normal">({pinnedBooks.length})</span>
+                <h2 className="mb-3 flex items-center gap-2 border-b pb-1.5 text-lg font-semibold text-foreground">
+                  <Pin className="h-4 w-4 fill-primary text-primary" /> Pinned{" "}
+                  <span className="text-sm font-normal text-muted-foreground">({pinnedBooks.length})</span>
                 </h2>
                 <BookGroup books={pinnedBooks} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} />
               </section>
             )}
             {groups.map((group) => (
               <section key={group.name}>
-                <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+                <h2 className="mb-3 flex items-baseline gap-2 border-b pb-1.5 text-lg font-semibold text-foreground">
                   {group.name}{" "}
-                  <span className="font-normal">({group.items.length})</span>
+                  <span className="text-sm font-normal text-muted-foreground">({group.items.length})</span>
                 </h2>
                 <BookGroup books={group.items} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} />
               </section>

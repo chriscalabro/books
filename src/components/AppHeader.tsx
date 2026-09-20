@@ -1,12 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useTheme } from "@/contexts/ThemeContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { BookMarked, Moon, Sun, Settings as SettingsIcon, LogOut } from "lucide-react";
+import { BookMarked, Settings as SettingsIcon } from "lucide-react";
 
 export default function AppHeader() {
-  const { theme, toggleTheme } = useTheme();
-  const { signOut } = useAuth();
   const location = useLocation();
 
   return (
@@ -17,9 +13,6 @@ export default function AppHeader() {
           Books
         </Link>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
           {location.pathname !== "/settings" ? (
             <Button variant="ghost" size="icon" asChild aria-label="Settings">
               <Link to="/settings">
@@ -31,9 +24,6 @@ export default function AppHeader() {
               <Link to="/">Done</Link>
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={signOut} aria-label="Lock">
-            <LogOut className="h-4 w-4" />
-          </Button>
         </div>
       </div>
     </header>

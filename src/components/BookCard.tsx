@@ -1,11 +1,28 @@
+import React from "react";
 import { Book } from "@/hooks/useBooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { BookOpen, ExternalLink, Pencil, Pin, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  BookOpen,
+  Copy,
+  MoreVertical,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPubDate } from "@/lib/dateFormat";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { toast } from "sonner";
 
 interface Props {
   book: Book;
@@ -17,34 +34,69 @@ interface Props {
   showDate?: boolean;
 }
 
-function PinButton({
+async function copyText(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(`Copied ${label}`);
+  } catch {
+    toast.error("Couldn't copy");
+  }
+}
+
+// The overflow menu: copy, open link, edit, pin, delete. Used by both views so
+// the row/card stays uncluttered (esp. on mobile).
+function BookMenu({
   book,
+  onEdit,
+  onDelete,
   onTogglePin,
   className,
 }: {
   book: Book;
-  onTogglePin: (book: Book) => void;
+  onEdit: (b: Book) => void;
+  onDelete: (b: Book) => void;
+  onTogglePin: (b: Book) => void;
   className?: string;
 }) {
+  const titleAndAuthor = book.author ? `${book.title} — ${book.author}` : book.title;
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className={className}
-      aria-label={book.pinned ? "Unpin" : "Pin"}
-      aria-pressed={book.pinned}
-      onClick={(e) => {
-        e.stopPropagation();
-        onTogglePin(book);
-      }}
-    >
-      <Pin
-        className={cn(
-          "h-4 w-4",
-          book.pinned ? "fill-primary text-primary" : "text-muted-foreground"
-        )}
-      />
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className={className} aria-label="More actions">
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => copyText(titleAndAuthor, "title & author")}>
+          <Copy className="mr-2 h-4 w-4" /> Copy title &amp; author
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => copyText(book.title, "title")}>
+          <Copy className="mr-2 h-4 w-4" /> Copy title
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onEdit(book)}>
+          <Pencil className="mr-2 h-4 w-4" /> Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onTogglePin(book)}>
+          {book.pinned ? (
+            <>
+              <PinOff className="mr-2 h-4 w-4" /> Unpin
+            </>
+          ) : (
+            <>
+              <Pin className="mr-2 h-4 w-4" /> Pin
+            </>
+          )}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => onDelete(book)}
+        >
+          <Trash2 className="mr-2 h-4 w-4" /> Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -63,7 +115,7 @@ function coverSrc(url: string): string {
   }
 }
 
-function Cover({ book, className }: { book: Book; className?: string }) {
+function CoverImg({ book, className }: { book: Book; className?: string }) {
   if (book.cover_url) {
     return (
       <img
@@ -79,6 +131,44 @@ function Cover({ book, className }: { book: Book; className?: string }) {
     <div className={`flex items-center justify-center bg-muted ${className ?? ""}`}>
       <BookOpen className="h-6 w-6 text-muted-foreground/50" />
     </div>
+  );
+}
+
+// The main tap target (cover + title/author). Opens the book's link when it has
+// one; otherwise it falls back to editing so a tap is never a dead end. Edit is
+// always available from the overflow menu.
+function Primary({
+  book,
+  onEdit,
+  className,
+  children,
+}: {
+  book: Book;
+  onEdit: (b: Book) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  if (book.link) {
+    return (
+      <a
+        href={book.link}
+        target="_blank"
+        rel="noreferrer"
+        className={className}
+        aria-label={`Open link for ${book.title}`}
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <button
+      onClick={() => onEdit(book)}
+      className={className}
+      aria-label={`Edit ${book.title}`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -105,17 +195,18 @@ export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, sh
   if (view === "grid") {
     return (
       <Card className="group relative overflow-hidden">
-        {/* Pin overlays the card so it isn't a button nested in a button. */}
-        <PinButton
+        <BookMenu
           book={book}
+          onEdit={onEdit}
+          onDelete={onDelete}
           onTogglePin={onTogglePin}
-          className={cn(
-            "absolute right-0.5 top-0.5 z-10 h-6 w-6 rounded-full bg-background/70 backdrop-blur hover:bg-background",
-            !book.pinned && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-          )}
+          className="absolute right-0.5 top-0.5 z-10 h-7 w-7 rounded-full bg-background/70 backdrop-blur hover:bg-background sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 sm:data-[state=open]:opacity-100"
         />
-        <button onClick={() => onEdit(book)} className="block w-full text-left">
-          <Cover book={book} className="aspect-[2/3] w-full bg-muted object-contain" />
+        {book.pinned && (
+          <Pin className="absolute left-1.5 top-1.5 z-10 h-3.5 w-3.5 fill-primary text-primary" />
+        )}
+        <Primary book={book} onEdit={onEdit} className="block w-full text-left">
+          <CoverImg book={book} className="aspect-[2/3] w-full bg-muted object-contain" />
           <div className="space-y-1 p-2">
             <p className="line-clamp-2 text-sm font-medium leading-tight">{book.title}</p>
             {book.author && (
@@ -127,16 +218,20 @@ export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, sh
               </p>
             )}
           </div>
-        </button>
+        </Primary>
       </Card>
     );
   }
 
   return (
     <Card className="group flex items-start gap-3 p-3">
-      <PinButton book={book} onTogglePin={onTogglePin} className="-ml-1 mt-0.5 h-8 w-8 shrink-0" />
-      <button onClick={() => onEdit(book)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
-        <Cover book={book} className="h-16 w-11 flex-shrink-0 rounded object-cover" />
+      {book.pinned && <Pin className="mt-1 h-4 w-4 shrink-0 fill-primary text-primary" />}
+      <Primary
+        book={book}
+        onEdit={onEdit}
+        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+      >
+        <CoverImg book={book} className="h-16 w-11 shrink-0 rounded object-cover" />
         <div className="min-w-0 flex-1">
           <p className="font-medium leading-tight">{book.title}</p>
           {book.author && <p className="text-sm text-muted-foreground">{book.author}</p>}
@@ -147,23 +242,14 @@ export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, sh
             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{book.notes}</p>
           )}
         </div>
-      </button>
-      {/* Always tappable on touch (no hover); reveal on hover on desktop. */}
-      <div className="flex flex-shrink-0 items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-        {book.link && (
-          <Button variant="ghost" size="icon" asChild aria-label="Open link">
-            <a href={book.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-        )}
-        <Button variant="ghost" size="icon" onClick={() => onEdit(book)} aria-label="Edit">
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(book)} aria-label="Delete">
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      </Primary>
+      <BookMenu
+        book={book}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onTogglePin={onTogglePin}
+        className="-mr-1 shrink-0"
+      />
     </Card>
   );
 }

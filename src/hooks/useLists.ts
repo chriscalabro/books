@@ -68,6 +68,38 @@ export function useLists(kind: ListKind) {
     },
   });
 
+  const reorder = useMutation({
+    // Persist a new ordering. `orderedIds` is the full list in its new order;
+    // each row's sort_order becomes its index.
+    mutationFn: async (orderedIds: string[]) => {
+      await Promise.all(
+        orderedIds.map((id, i) =>
+          supabase.from("lists").update({ sort_order: i }).eq("id", id)
+        )
+      );
+    },
+    // Optimistic: reflect the new order immediately so the arrows feel instant.
+    onMutate: async (orderedIds: string[]) => {
+      await qc.cancelQueries({ queryKey: ["lists", kind] });
+      const prev = qc.getQueryData<ListItem[]>(["lists", kind]);
+      if (prev) {
+        const byId = new Map(prev.map((it) => [it.id, it]));
+        const next = orderedIds
+          .map((id, i) => {
+            const it = byId.get(id);
+            return it ? { ...it, sort_order: i } : null;
+          })
+          .filter(Boolean) as ListItem[];
+        qc.setQueryData<ListItem[]>(["lists", kind], next);
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["lists", kind], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["lists", kind] }),
+  });
+
   const remove = useMutation({
     // Deleting an option clears it from books (does not delete the books).
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
@@ -82,5 +114,5 @@ export function useLists(kind: ListKind) {
     },
   });
 
-  return { ...query, add, rename, remove };
+  return { ...query, add, rename, remove, reorder };
 }

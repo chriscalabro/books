@@ -147,7 +147,9 @@ export default function BookForm({ open, onOpenChange, book, onRequestDelete }: 
           <DialogTitle>{book ? "Edit book" : "Add book"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          {/* Autofill from a publisher URL */}
+          {/* Autofill from a publisher URL — only when adding; no need to
+              re-fetch an existing book. */}
+          {!book && (
           <div className="rounded-lg border bg-muted/40 p-3">
             <Label htmlFor="lookup" className="flex items-center gap-1.5 text-xs">
               <Sparkles className="h-3.5 w-3.5" /> Autofill from a publisher URL
@@ -177,6 +179,7 @@ export default function BookForm({ open, onOpenChange, book, onRequestDelete }: 
               </Button>
             </div>
           </div>
+          )}
 
           <div>
             <Label htmlFor="title">Title</Label>
