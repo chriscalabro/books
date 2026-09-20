@@ -8,6 +8,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -17,6 +20,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Search,
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +45,58 @@ async function copyText(text: string, label: string) {
   } catch {
     toast.error("Couldn't copy");
   }
+}
+
+// Silver Unicorn carries the term in the URL *path* and reads it literally, so
+// it wants only the truly path-unsafe characters encoded (spaces, slashes, …).
+// Colons/commas/dashes must stay literal or the search finds nothing.
+function encodePathTerm(q: string): string {
+  return encodeURIComponent(q)
+    .replace(/%3A/gi, ":")
+    .replace(/%2C/gi, ",")
+    .replace(/%E2%80%94/g, "—");
+}
+
+// Sites we can deep-link straight to a search results page. Each `url` receives
+// the raw query and encodes it as that site expects. Kept as data so the
+// submenu stays trivial to extend.
+const SEARCH_SITES: { label: string; url: (q: string) => string }[] = [
+  {
+    label: "MVLC",
+    url: (q) =>
+      `https://mvlc.ent.sirsi.net/client/en_US/mvlc/search/results?qu=${encodeURIComponent(q)}`,
+  },
+  {
+    label: "Minuteman (MLN)",
+    url: (q) =>
+      `https://catalog.minlib.net/Union/Search?searchSource=local&basicType=Keyword&lookfor=${encodeURIComponent(q)}`,
+  },
+  {
+    label: "Libby",
+    url: (q) =>
+      `https://libbyapp.com/search/bpl/search/scope-deep/query-${encodeURIComponent(q)}/page-1`,
+  },
+  {
+    label: "Silver Unicorn",
+    url: (q) =>
+      `https://www.silverunicornbooks.com/browse/filter/t/${encodePathTerm(q)}/k/keyword`,
+  },
+  {
+    label: "Barnes & Noble",
+    url: (q) => `https://www.barnesandnoble.com/search?q=${encodeURIComponent(q)}`,
+  },
+];
+
+function openSearch(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+// The Commonwealth Catalog generates a per-session searchId server-side, so its
+// query can't live in a URL. Copy the query and open the catalog so a paste is
+// all that's left — mirroring the clipboard-based flow it replaces.
+async function commonwealthSearch(query: string) {
+  await copyText(query, "search — paste it into Commonwealth Catalog");
+  openSearch("https://www.commonwealthcatalog.org/");
 }
 
 // The overflow menu: copy, open link, edit, pin, delete. Used by both views so
@@ -72,6 +128,39 @@ function BookMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => copyText(book.title, "title")}>
           <Copy className="mr-2 h-4 w-4" /> Copy title
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Search className="mr-2 h-4 w-4" /> Search via…
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {SEARCH_SITES.map((site) => (
+              <DropdownMenuItem
+                key={site.label}
+                // Keep the menu open so you can fire off several searches in a
+                // row; press Esc or click away when you're done.
+                onSelect={(e) => e.preventDefault()}
+                onClick={() => openSearch(site.url(titleAndAuthor))}
+              >
+                {site.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem
+              onSelect={(e) => e.preventDefault()}
+              onClick={() => commonwealthSearch(titleAndAuthor)}
+            >
+              Commonwealth Catalog
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuItem
+          onSelect={(e) => e.preventDefault()}
+          onClick={() =>
+            openSearch(`https://www.goodreads.com/search?q=${encodeURIComponent(titleAndAuthor)}`)
+          }
+        >
+          <Search className="mr-2 h-4 w-4" /> Search Goodreads
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onEdit(book)}>
@@ -206,7 +295,14 @@ export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, sh
           <Pin className="absolute left-1.5 top-1.5 z-10 h-3.5 w-3.5 fill-primary text-primary" />
         )}
         <Primary book={book} onEdit={onEdit} className="block w-full text-left">
-          <CoverImg book={book} className="aspect-[2/3] w-full bg-muted object-contain" />
+          <div className="relative">
+            <CoverImg book={book} className="aspect-[2/3] w-full bg-muted object-contain" />
+            {book.acquisition && (
+              <span className="absolute bottom-1.5 left-1.5 line-clamp-2 max-w-[calc(100%-0.75rem)] rounded-[2px] bg-[#fde047]/90 px-1.5 py-0.5 text-[11px] font-medium leading-tight text-neutral-900 backdrop-blur-sm">
+                {book.acquisition}
+              </span>
+            )}
+          </div>
           <div className="space-y-1 p-2">
             <p className="line-clamp-2 text-sm font-medium leading-tight">{book.title}</p>
             {book.author && (
