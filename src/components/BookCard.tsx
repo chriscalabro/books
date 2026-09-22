@@ -280,7 +280,11 @@ function Meta({ book, dateFormat }: { book: Book; dateFormat?: string }) {
   );
 }
 
-export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, showDate }: Props) {
+export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, showDate: futureView }: Props) {
+  // Upcoming books always show their exact date, not just in the Future view.
+  // Same comparison as the Future filter in Books.tsx.
+  const isFuture = !!book.pub_date && book.pub_date > new Date().toISOString().slice(0, 10);
+  const showDate = futureView || isFuture;
   if (view === "grid") {
     return (
       <Card className="group relative overflow-hidden">
@@ -308,9 +312,9 @@ export default function BookCard({ book, view, onEdit, onDelete, onTogglePin, sh
             {book.author && (
               <p className="line-clamp-1 text-xs text-muted-foreground">{book.author}</p>
             )}
-            {showDate && book.pub_date && (
+            {book.pub_date && (
               <p className="text-xs font-medium text-muted-foreground">
-                {formatPubDate(book.pub_date, FUTURE_DATE_FORMAT)}
+                {formatPubDate(book.pub_date, showDate ? FUTURE_DATE_FORMAT : "yyyy")}
               </p>
             )}
           </div>
