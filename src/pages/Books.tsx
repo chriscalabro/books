@@ -41,7 +41,7 @@ export default function Books() {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<string | null>(null);
   const [acqFilter, setAcqFilter] = useState<string | null>(null);
-  const [timeFilter, setTimeFilter] = useState<"all" | "available" | "future">("all");
+  const [timeFilter, setTimeFilter] = useState<"all" | "available" | "future" | "added">("all");
   const [showFilters, setShowFilters] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -88,8 +88,13 @@ export default function Books() {
     [filtered, today]
   );
 
-  const timedList = timeFilter === "future" ? futureBooks : availableBooks;
-  const timedLabel = timeFilter === "future" ? "Upcoming" : "Published";
+  // Everything, in the order it was added — newest at the bottom.
+  const addedBooks = useMemo(() => sortBooks(filtered, "added-asc"), [filtered]);
+
+  const timedList =
+    timeFilter === "future" ? futureBooks : timeFilter === "added" ? addedBooks : availableBooks;
+  const timedLabel =
+    timeFilter === "future" ? "Upcoming" : timeFilter === "added" ? "Date added" : "Published";
 
   // Pinned books float to the top in their own section, out of the category groups.
   const pinnedBooks = useMemo(() => sorted.filter((b) => b.pinned), [sorted]);
@@ -212,6 +217,9 @@ export default function Books() {
           <Pill active={timeFilter === "future"} onClick={() => setTimeFilter("future")}>
             Future{futureBooks.length > 0 && ` (${futureBooks.length})`}
           </Pill>
+          <Pill active={timeFilter === "added"} onClick={() => setTimeFilter("added")}>
+            Added
+          </Pill>
         </div>
 
         {/* Filter pills */}
@@ -244,14 +252,16 @@ export default function Books() {
             <p className="py-16 text-center text-muted-foreground">
               {timeFilter === "future"
                 ? "No upcoming releases with a future date."
-                : "No published books with a date yet."}
+                : timeFilter === "added"
+                  ? "Nothing matches those filters."
+                  : "No published books with a date yet."}
             </p>
           ) : (
             <section>
               <h2 className="mb-3 flex items-baseline gap-2 border-b pb-1.5 text-lg font-semibold text-foreground">
                 {timedLabel} <span className="text-sm font-normal text-muted-foreground">({timedList.length})</span>
               </h2>
-              <BookGroup books={timedList} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} showDate />
+              <BookGroup books={timedList} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} showDate={timeFilter !== "added"} />
             </section>
           )
         ) : filtered.length === 0 ? (
