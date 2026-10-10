@@ -21,7 +21,7 @@ import { useGridCols } from "@/hooks/useGridCols";
 import { useSort } from "@/hooks/useSort";
 import { sortBooks } from "@/lib/sortBooks";
 import { cn } from "@/lib/utils";
-import { Plus, LayoutGrid, List as ListIcon, Search, WifiOff, Filter, Pin } from "lucide-react";
+import { Plus, LayoutGrid, List as ListIcon, Search, WifiOff, Filter, Pin, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 
 const UNCATEGORIZED = "Uncategorized";
@@ -42,6 +42,7 @@ export default function Books() {
   const [catFilter, setCatFilter] = useState<string | null>(null);
   const [acqFilter, setAcqFilter] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<"all" | "available" | "future" | "added">("all");
+  const [addedDir, setAddedDir] = useState<"asc" | "desc">("desc");
   const [showFilters, setShowFilters] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -88,8 +89,11 @@ export default function Books() {
     [filtered, today]
   );
 
-  // Everything, in the order it was added — newest at the bottom.
-  const addedBooks = useMemo(() => sortBooks(filtered, "added-asc"), [filtered]);
+  // Everything, by date added. Defaults to newest first; ascending puts the newest at the bottom.
+  const addedBooks = useMemo(
+    () => sortBooks(filtered, addedDir === "asc" ? "added-asc" : "added-desc"),
+    [filtered, addedDir]
+  );
 
   const timedList =
     timeFilter === "future" ? futureBooks : timeFilter === "added" ? addedBooks : availableBooks;
@@ -209,7 +213,7 @@ export default function Books() {
         {/* Time pills */}
         <div className="mb-4 flex items-center gap-1.5">
           <Pill active={timeFilter === "all"} onClick={() => setTimeFilter("all")}>
-            All
+            All{filtered.length > 0 && ` (${filtered.length})`}
           </Pill>
           <Pill active={timeFilter === "available"} onClick={() => setTimeFilter("available")}>
             Published{availableBooks.length > 0 && ` (${availableBooks.length})`}
@@ -217,8 +221,19 @@ export default function Books() {
           <Pill active={timeFilter === "future"} onClick={() => setTimeFilter("future")}>
             Future{futureBooks.length > 0 && ` (${futureBooks.length})`}
           </Pill>
-          <Pill active={timeFilter === "added"} onClick={() => setTimeFilter("added")}>
-            Added
+          {/* First click opens the view; clicking again flips the direction. */}
+          <Pill
+            active={timeFilter === "added"}
+            onClick={() =>
+              timeFilter === "added"
+                ? setAddedDir((d) => (d === "asc" ? "desc" : "asc"))
+                : setTimeFilter("added")
+            }
+          >
+            <span className="inline-flex items-center gap-1">
+              Added
+              {addedDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+            </span>
           </Pill>
         </div>
 
