@@ -41,7 +41,7 @@ export default function Books() {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<string | null>(null);
   const [acqFilter, setAcqFilter] = useState<string | null>(null);
-  const [timeFilter, setTimeFilter] = useState<"all" | "available" | "future" | "added">("all");
+  const [timeFilter, setTimeFilter] = useState<"all" | "available" | "future" | "categorized">("all");
   const [addedDir, setAddedDir] = useState<"asc" | "desc">("desc");
   const [showFilters, setShowFilters] = useState(false);
 
@@ -96,12 +96,14 @@ export default function Books() {
   );
 
   const timedList =
-    timeFilter === "future" ? futureBooks : timeFilter === "added" ? addedBooks : availableBooks;
-  const timedLabel =
-    timeFilter === "future" ? "Upcoming" : timeFilter === "added" ? "Date added" : "Published";
+    timeFilter === "future" ? futureBooks : timeFilter === "all" ? addedBooks : availableBooks;
+  const timedLabel = timeFilter === "future" ? "Upcoming" : "Published";
 
   // Pinned books float to the top in their own section, out of the category groups.
   const pinnedBooks = useMemo(() => sorted.filter((b) => b.pinned), [sorted]);
+  // The "All" view pins the same way, but keeps the date-added order throughout.
+  const pinnedAdded = useMemo(() => addedBooks.filter((b) => b.pinned), [addedBooks]);
+  const unpinnedAdded = useMemo(() => addedBooks.filter((b) => !b.pinned), [addedBooks]);
 
   // Group the rest by category, ordered by the user's category order.
   const groups = useMemo(() => {
@@ -212,8 +214,19 @@ export default function Books() {
 
         {/* Time pills */}
         <div className="mb-4 flex items-center gap-1.5">
-          <Pill active={timeFilter === "all"} onClick={() => setTimeFilter("all")}>
-            All{filtered.length > 0 && ` (${filtered.length})`}
+          {/* Default view. First click opens it; clicking again flips the direction. */}
+          <Pill
+            active={timeFilter === "all"}
+            onClick={() =>
+              timeFilter === "all"
+                ? setAddedDir((d) => (d === "asc" ? "desc" : "asc"))
+                : setTimeFilter("all")
+            }
+          >
+            <span className="inline-flex items-center gap-1">
+              All{filtered.length > 0 && ` (${filtered.length})`}
+              {addedDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+            </span>
           </Pill>
           <Pill active={timeFilter === "available"} onClick={() => setTimeFilter("available")}>
             Published{availableBooks.length > 0 && ` (${availableBooks.length})`}
@@ -221,19 +234,8 @@ export default function Books() {
           <Pill active={timeFilter === "future"} onClick={() => setTimeFilter("future")}>
             Future{futureBooks.length > 0 && ` (${futureBooks.length})`}
           </Pill>
-          {/* First click opens the view; clicking again flips the direction. */}
-          <Pill
-            active={timeFilter === "added"}
-            onClick={() =>
-              timeFilter === "added"
-                ? setAddedDir((d) => (d === "asc" ? "desc" : "asc"))
-                : setTimeFilter("added")
-            }
-          >
-            <span className="inline-flex items-center gap-1">
-              Added
-              {addedDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-            </span>
+          <Pill active={timeFilter === "categorized"} onClick={() => setTimeFilter("categorized")}>
+            Categorized
           </Pill>
         </div>
 
@@ -262,21 +264,19 @@ export default function Books() {
         {/* Content */}
         {isLoading ? (
           <p className="py-16 text-center text-muted-foreground">Loading…</p>
-        ) : timeFilter !== "all" ? (
+        ) : timeFilter === "available" || timeFilter === "future" ? (
           timedList.length === 0 ? (
             <p className="py-16 text-center text-muted-foreground">
               {timeFilter === "future"
                 ? "No upcoming releases with a future date."
-                : timeFilter === "added"
-                  ? "Nothing matches those filters."
-                  : "No published books with a date yet."}
+                : "No published books with a date yet."}
             </p>
           ) : (
             <section>
               <h2 className="mb-3 flex items-baseline gap-2 border-b pb-1.5 text-lg font-semibold text-foreground">
                 {timedLabel} <span className="text-sm font-normal text-muted-foreground">({timedList.length})</span>
               </h2>
-              <BookGroup books={timedList} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} showDate={timeFilter !== "added"} />
+              <BookGroup books={timedList} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} showDate />
             </section>
           )
         ) : filtered.length === 0 ? (
@@ -288,6 +288,21 @@ export default function Books() {
               </>
             ) : (
               <p>Nothing matches those filters.</p>
+            )}
+          </div>
+        ) : timeFilter === "all" ? (
+          <div className="space-y-8">
+            {pinnedAdded.length > 0 && (
+              <section>
+                <h2 className="mb-3 flex items-center gap-2 border-b pb-1.5 text-lg font-semibold text-foreground">
+                  <Pin className="h-4 w-4 fill-primary text-primary" /> Pinned{" "}
+                  <span className="text-sm font-normal text-muted-foreground">({pinnedAdded.length})</span>
+                </h2>
+                <BookGroup books={pinnedAdded} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} />
+              </section>
+            )}
+            {unpinnedAdded.length > 0 && (
+              <BookGroup books={unpinnedAdded} view={view} onEdit={openEdit} onDelete={setDeleting} onTogglePin={togglePin} />
             )}
           </div>
         ) : (
