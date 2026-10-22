@@ -114,7 +114,7 @@ function BookMenu({
   onTogglePin: (b: Book) => void;
   className?: string;
 }) {
-  const titleAndAuthor = book.author ? `${book.title} — ${book.author}` : book.title;
+  const titleAndAuthor = book.author ? `${book.title} ${book.author}` : book.title;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
