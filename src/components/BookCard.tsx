@@ -141,14 +141,14 @@ function BookMenu({
                 // Keep the menu open so you can fire off several searches in a
                 // row; press Esc or click away when you're done.
                 onSelect={(e) => e.preventDefault()}
-                onClick={() => openSearch(site.url(titleAndAuthor))}
+                onClick={() => openSearch(site.url(book.title))}
               >
                 {site.label}
               </DropdownMenuItem>
             ))}
             <DropdownMenuItem
               onSelect={(e) => e.preventDefault()}
-              onClick={() => commonwealthSearch(titleAndAuthor)}
+              onClick={() => commonwealthSearch(book.title)}
             >
               Commonwealth Catalog
             </DropdownMenuItem>
@@ -157,7 +157,7 @@ function BookMenu({
         <DropdownMenuItem
           onSelect={(e) => e.preventDefault()}
           onClick={() =>
-            openSearch(`https://www.goodreads.com/search?q=${encodeURIComponent(titleAndAuthor)}`)
+            openSearch(`https://www.goodreads.com/search?q=${encodeURIComponent(book.title)}`)
           }
         >
           <Search className="mr-2 h-4 w-4" /> Search Goodreads
